@@ -21,6 +21,7 @@
  *   redbook followers <user-id> --cookie-source chrome --json
  *   redbook following <user-id> --cookie-source chrome --json
  *   redbook delete <url> --cookie-source chrome
+ *   redbook health --cookie-source chrome --json
  */
 
 import { Command } from "commander";
@@ -40,6 +41,7 @@ import {
   type StrategyName,
 } from "./lib/reply-strategy.js";
 import { extractTemplate, formatTemplate } from "./lib/template.js";
+import { buildHealthReport, type NoteDiagnostics } from "./lib/health.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8"));
@@ -689,6 +691,98 @@ deleteCmd.action(async (url, opts) => {
     handleError(err);
   }
 });
+
+// ─── health ──────────────────────────────────────────────────────────────────
+
+const healthCmd = program
+  .command("health")
+  .description("Check note distribution health — detect hidden rate-limiting (限流)")
+  .option("--all", "Fetch all pages of notes");
+addCookieOption(healthCmd);
+addJsonOption(healthCmd);
+
+healthCmd.action(async (opts) => {
+  try {
+    const client = await getClient(opts.cookieSource, opts.chromeProfile, opts.cookieString);
+
+    // Fetch notes from creator backend (v2 endpoint returns hidden level field)
+    console.error(kleur.dim("Fetching notes from creator backend..."));
+    const allNotes: Record<string, unknown>[] = [];
+    let page = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+      const res = (await client.getCreatorNoteList(0, page)) as {
+        notes?: Record<string, unknown>[];
+        has_more?: boolean;
+      };
+      if (res.notes) allNotes.push(...res.notes);
+      hasMore = opts.all ? (res.has_more ?? false) : false;
+      page++;
+    }
+
+    if (allNotes.length === 0) {
+      console.log(kleur.yellow("No notes found."));
+      return;
+    }
+
+    const report = buildHealthReport(allNotes);
+
+    if (opts.json) {
+      output(report, true);
+      return;
+    }
+
+    // ─── Terminal Dashboard ──────────────────────────────────────────────
+    console.log(kleur.bold("\n📊 Note Health Report"));
+    console.log(kleur.dim("───────────────────────────────────────"));
+
+    // Distribution summary
+    for (const [label, count] of Object.entries(report.distribution)) {
+      const bar = "█".repeat(Math.min(count, 40));
+      console.log(`  ${label.padEnd(14)} ${kleur.dim(bar)} ${count}`);
+    }
+
+    console.log(kleur.dim(`\n  Total: ${report.totalNotes} notes`));
+
+    // Limited notes (level < 1)
+    if (report.limitedNotes.length > 0) {
+      console.log(kleur.red(kleur.bold(`\n⚠ ${report.limitedNotes.length} notes with limited distribution:`)));
+      for (const n of report.limitedNotes) {
+        const flags = formatFlags(n);
+        console.log(`  ${n.levelMeta.emoji} ${kleur.red(`L${n.level}`.padEnd(6))} ${truncate(n.title, 50)}${flags}`);
+      }
+    } else {
+      console.log(kleur.green("\n✓ All notes have normal distribution!"));
+    }
+
+    // Sensitive word warnings
+    if (report.sensitiveNotes.length > 0) {
+      console.log(kleur.yellow(`\n⚠ ${report.sensitiveNotes.length} notes with risk factors:`));
+      for (const n of report.sensitiveNotes) {
+        const reasons: string[] = [];
+        if (n.sensitiveHits.length > 0) reasons.push(`敏感词: ${n.sensitiveHits.join("、")}`);
+        if (n.tagWarning) reasons.push(`标签过多(${n.tagCount}个)`);
+        console.log(`  ${kleur.dim(n.noteId.slice(0, 8))} ${truncate(n.title, 40)} ${kleur.yellow(reasons.join(" | "))}`);
+      }
+    }
+
+    console.log();
+  } catch (err) {
+    handleError(err);
+  }
+});
+
+function formatFlags(n: NoteDiagnostics): string {
+  const parts: string[] = [];
+  if (n.sensitiveHits.length > 0) parts.push(kleur.yellow(`⚠️${n.sensitiveHits.join("、")}`));
+  if (n.tagWarning) parts.push(kleur.yellow(`📛${n.tagCount}tags`));
+  return parts.length > 0 ? "  " + parts.join(" ") : "";
+}
+
+function truncate(s: string, max: number): string {
+  return s.length > max ? s.slice(0, max) + "…" : s;
+}
 
 // ─── analyze-viral ──────────────────────────────────────────────────────────
 

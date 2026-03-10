@@ -529,7 +529,8 @@ export class XhsClient {
     tab: number = 0,
     page: number = 0
   ): Promise<unknown> {
-    return this.creatorGet("/api/galaxy/creator/note/user/posted", {
+    // v2 endpoint returns the hidden `level` field for note health checks
+    return this.creatorGet("/api/galaxy/v2/creator/note/user/posted", {
       tab,
       page,
     });
