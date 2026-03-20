@@ -316,11 +316,46 @@ const userPostsCmd = program
   .description("List a user's posted notes");
 addCookieOption(userPostsCmd);
 addJsonOption(userPostsCmd);
+userPostsCmd.option("--cursor <cursor>", "Resume pagination from a cursor (last note_id)");
+userPostsCmd.option("--all", "Fetch all pages (paginate until no more results)");
+userPostsCmd.option("--delay <ms>", "Delay in ms between page fetches (default: 3000)", "3000");
 
 userPostsCmd.action(async (userId, opts) => {
   try {
     const client = await getClient(opts.cookieSource, opts.chromeProfile, opts.cookieString);
-    const result = await client.getUserNotes(userId);
+
+    if (opts.all) {
+      let cursor: string = opts.cursor ?? "";
+      const allNotes: Array<Record<string, unknown>> = [];
+      let page = 1;
+      while (true) {
+        const res = (await client.getUserNotes(userId, cursor)) as {
+          notes?: Array<Record<string, unknown>>;
+          has_more?: boolean;
+          cursor?: string;
+        };
+        const notes = res.notes ?? [];
+        allNotes.push(...notes);
+        process.stderr.write(`Page ${page}: +${notes.length} notes (total: ${allNotes.length})\n`);
+        if (!res.has_more || !res.cursor || notes.length === 0) break;
+        cursor = res.cursor;
+        page++;
+        await new Promise((r) => setTimeout(r, parseInt(opts.delay)));
+      }
+      if (opts.json) {
+        output({ notes: allNotes, total: allNotes.length }, true);
+      } else {
+        for (const note of allNotes) {
+          console.log(
+            `${kleur.bold(String(note.display_title ?? "(no title)"))}  ${kleur.dim(String(note.note_id ?? ""))}  [${String(note.type ?? "?")}]`
+          );
+        }
+        console.log(kleur.dim(`\n${allNotes.length} notes total`));
+      }
+      return;
+    }
+
+    const result = await client.getUserNotes(userId, opts.cursor ?? "");
     if (opts.json) {
       output(result, true);
     } else {
