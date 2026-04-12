@@ -80,6 +80,12 @@ jobs:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
+      # OIDC trusted publishing requires npm >= 11.5.1. Pin to a known-good
+      # version — `npm@latest` has intermittently shipped broken releases
+      # missing bundled deps like `promise-retry`.
+      - name: Pin npm for OIDC support
+        run: npm install -g npm@11.5.1 && npm --version
+
       - name: Install dependencies
         run: npm ci
 
