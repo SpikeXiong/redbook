@@ -175,11 +175,6 @@ searchCmd.action(async (keyword, opts) => {
       if (data.items) {
         for (const item of data.items) {
           const card = item.note_card;
-          //console.log("=== API 返回的原始数据 ===");
-          //console.log(JSON.stringify(item, null, 2)); // 格式化打印 JSON
-          console.log("=======not id=======");
-          console.log((item.webUrl ?? "unknown"));
-
           if (!card) continue;
           console.log(
             `${kleur.bold(card.display_title ?? "(no title)")} — ${kleur.dim(`@${card.user?.nickname ?? "?"}`)}` +
