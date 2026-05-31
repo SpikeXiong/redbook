@@ -171,17 +171,22 @@ searchCmd.action(async (keyword, opts) => {
     if (opts.json) {
       output(result, true);
     } else {
-      const data = result as { items?: Array<{ note_card?: { title?: string; user?: { nickname?: string }; note_id?: string; interact_info?: Record<string, string> } }> };
+      const data = result as { items?: Array<{webUrl?:string, note_card?: { display_title?: string; user?: { nickname?: string }; id?: string; interact_info?: Record<string, string> } }> };
       if (data.items) {
         for (const item of data.items) {
           const card = item.note_card;
+          //console.log("=== API 返回的原始数据 ===");
+          //console.log(JSON.stringify(item, null, 2)); // 格式化打印 JSON
+          console.log("=======not id=======");
+          console.log((item.webUrl ?? "unknown"));
+
           if (!card) continue;
           console.log(
-            `${kleur.bold(card.title ?? "(no title)")} — ${kleur.dim(`@${card.user?.nickname ?? "?"}`)}` +
-            `  ${kleur.cyan(card.note_id ?? "")}`
+            `${kleur.bold(card.display_title ?? "(no title)")} — ${kleur.dim(`@${card.user?.nickname ?? "?"}`)}` +
+            `  ${kleur.cyan(item.webUrl ?? "note_id: unknown")}`
           );
           if (card.interact_info) {
-            const info = card.interact_info;
+            const info = card.interact_info;  
             console.log(
               `  ${kleur.dim(`♥ ${info.liked_count ?? 0}  💬 ${info.comment_count ?? 0}  ⭐ ${info.collected_count ?? 0}`)}`
             );
